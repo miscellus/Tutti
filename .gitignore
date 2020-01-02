@@ -1,0 +1,4 @@
+*.sublime*
+*.wav
+test_tutti
+.gdb_history
