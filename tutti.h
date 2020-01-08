@@ -1,6 +1,7 @@
 #ifndef TUTTI
 #define TUTTI
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -296,14 +297,14 @@ double tut_wave_saw(double v) {
 	return v;
 }
 
-// enum {TUT_TIMELINE_BUCKET_CAPACITY = 8};
+// enum {TUT_TIMELINE_BUCKET_ops_CAPACITY = 8};
 
 // typedef struct Tut_Timeline_Bucket {
-// 	double pivot; // NOTE(jakob): the timestamp in seconds
-// 	union {
-// 		struct Tut_Timeline_Bucket *left;
-// 		struct Tut_Timeline_Bucket *right;
-// 	} u;
+//  double pivot; // NOTE(jakob): the timestamp in seconds
+//  union {
+//      struct Tut_Timeline_Bucket *left;
+//      struct Tut_Timeline_Bucket *right;
+//  } u;
 // } Tut_Timeline_Bucket;
 
 // typedef struct Tut_Timeline {
@@ -315,244 +316,235 @@ typedef enum Tut_Export_File_Type {
 	TUT_FILE_WAV = 0,
 } Tut_Export_File_Type;
 
-typedef enum Tut_Instruction_Kind {
-	TUT_INS_NONE = 0,
-	TUT_INS_PLAY = 1,
-	TUT_INS_REST = 2,
-	TUT_INS_DURATION = 3,
-	TUT_INS_LAST = TUT_INS_DURATION,
-} Tut_Instruction_Kind;
+typedef enum Tut_Opcode {
+	// NOTE(jakob): Ops will be sorted secondarily on the opcode, to
+	// ensure that the appropriate effects have been applied before
+	// TUT_OP_PLAY.
 
-typedef struct Tut_Instruction {
-	Tut_Instruction_Kind kind;
+	TUT_OP_NONE = 0,
+	TUT_OP_AMPLITUDE,
+	TUT_OP_SUB_TIMELINE,
+	TUT_OP_PLAY,
+	Tut_Opcode__COUNT
+} Tut_Opcode;
 
-	union {
-		struct {
-			double frequency;
-		} play;
-		double duration;
-	} u;
-} Tut_Instruction;
 
-typedef struct Tut_Channel {
-	double duration;
-	uintptr_t next_instruction_offset;
-	size_t instruction_stream_capacity;
-	uint8_t *instruction_stream;
-} Tut_Channel;
+typedef struct Tut_Op_Play {
+	Tut_Opcode opcode;
+	float frequency;
+	float duration;
+} Tut_Op_Play;
+
+typedef struct Tut_Op_Amplitude {
+	Tut_Opcode opcode;
+	float amplitude;
+} Tut_Op_Amplitude;
+
+// typedef struct Tut_Op_Pan {
+// 	Tut_Opcode opcode;
+// 	float pan;
+// } Tut_Op_Pan;
+
+struct Tut_Timeline;
+
+typedef struct Tut_Op_Sub_Timeline {
+	Tut_Opcode opcode;
+	struct Tut_Timeline *timeline;
+} Tut_Op_Sub_Timeline;
+
+typedef union Tut_Op {
+	Tut_Opcode opcode;
+	Tut_Op_Play play;
+	Tut_Op_Amplitude amplitude;
+	Tut_Op_Sub_Timeline sub_timeline;
+} Tut_Op;
+
+typedef struct Tut_Time_Op {
+	float at;
+	Tut_Op op;
+} Tut_Time_Op;
+
+typedef struct Tut_Timeline {
+	size_t ops_capacity;
+	uint64_t end_op_index;
+	Tut_Time_Op *ops;
+
+	size_t sample_capacity;
+	uint64_t end_sample_index;
+	float *samples;
+} Tut_Timeline;
 
 typedef struct Tut_Song {
-	struct {
-		int channel_index;
-	} current;
 	int16_t *samples;
 	size_t num_samples;
 	size_t used_samples;
-	uint32_t sample_rate;
-	Tut_Channel channels[2];
 } Tut_Song;
 
-static Tut_Song *global_song;
+typedef struct Tut_Global_State {
+	Tut_Timeline *timeline;
+	float amplitude;
+	float pan;
+	float time_scale;
+	float at;
+	uint32_t sample_rate;
+} Tut_Global_State;
 
-static inline void tut_print_instruction(Tut_Instruction ins) {
-	switch(ins.kind){
-		case TUT_INS_PLAY:
-			fprintf(stderr, "Ins: {.kind=PLAY,.play={.frequency=%f}}\n", ins.u.play.frequency);
-			break;
-		case TUT_INS_REST:
-			fprintf(stderr, "Ins: {.kind=REST}\n");
-			break;
-		case TUT_INS_DURATION:
-			fprintf(stderr, "Ins: {.kind=DURATION,.duration=%f}\n", ins.u.duration);
-			break;
-		default:
-			fprintf(stderr, "Ins: {.kind=UNKNOWN (%d)}\n", ins.kind);
-	}
+static Tut_Global_State tut_state = {
+	.sample_rate = 44100,
+	.time_scale = 1,
+	.amplitude = 0.8f,
+};
+
+static inline float tut_at(void) {
+	return tut_state.at;
 }
 
-Tut_Song tut_make_song(void) {
-	Tut_Song result = {0};
+static inline float tut_to(float at) {
+	return (tut_state.at = at);
+}
 
-	result.sample_rate = 44100;
-	result.num_samples = result.sample_rate * 60 * 60;
-	result.samples = calloc(1, result.num_samples * sizeof(int16_t));
+static inline float tut_advance(float duration) {
+	return tut_to(tut_at() + duration);
+}
 
-	for (unsigned int i = 0; i < tut_static_array_len(result.channels); ++i) {
-		Tut_Channel *channel = &result.channels[i];
-		*channel = (Tut_Channel){0};
-		
-		channel->duration = 0.5;
-		size_t cap = 128 * sizeof(Tut_Instruction);
-		channel->instruction_stream_capacity = cap;
-		channel->instruction_stream = malloc(cap);
-		assert(channel->instruction_stream);
-	}
+static inline void tut_time_scale(float time_scale) {
+	tut_state.time_scale = time_scale;
+}
 
+static inline void tut_timeline(Tut_Timeline *timeline) {
+	tut_state.timeline = timeline;
+}
+
+static inline Tut_Timeline tut_make_timeline(void) {
+	Tut_Timeline result = {0};
 	return result;
 }
 
-void tut_set_song(Tut_Song *song) {
-	global_song = song;
-}
+static void tut_push_op(Tut_Op op) {
 
-static inline size_t get_instruction_size(Tut_Instruction ins) {
-	size_t result = tut_offset_of(Tut_Instruction, u);
+	Tut_Timeline *tl = tut_state.timeline;
 
-	switch(ins.kind) {
-	case TUT_INS_PLAY:
-		result += sizeof(ins.u.play); break;
-	case TUT_INS_REST:
-		break;
-	case TUT_INS_DURATION:
-		result += sizeof(ins.u.duration); break;
-	default:
-		fprintf(stderr, "Ins Kind: %d\n", ins.kind);
-		assert(false);
-	}
-
-	// fprintf(stderr, "ins.kind %d, size: %d\n", ins.kind, (int)result);
-	return result;
-}
-
-void tut_push_instruction(Tut_Instruction ins) {
-
-	Tut_Channel *channel = &global_song->channels[global_song->current.channel_index];
-
-	size_t ins_size = get_instruction_size(ins);
-	uintptr_t next_instruction_offset = channel->next_instruction_offset;
-	// fprintf(stderr, "next_instruction_offset %"PRIxPTR", new_next_instruction_offset %"PRIxPTR"\n", next_instruction_offset, new_next_instruction_offset);
-	size_t instruction_stream_capacity = channel->instruction_stream_capacity;
-
-	if (next_instruction_offset + ins_size >= instruction_stream_capacity) {
-		void *new = realloc(channel->instruction_stream, 2*instruction_stream_capacity);
+	if (tl->end_op_index >= tl->ops_capacity) {
+		size_t new_ops_capacity = (tl->ops_capacity != 0) ? 2*tl->ops_capacity : 8;
+		fprintf(stderr, "next size: %d\n", (int)(new_ops_capacity * sizeof(tl->ops[0])));
+		void *new = realloc(tl->ops, new_ops_capacity * sizeof(tl->ops[0]));
 		assert(new != NULL);
 
-		if (new != channel->instruction_stream) {
+		if (new != tl->ops) {
 			fprintf(stderr, "realloc !\n");
 		}
 
-		channel->instruction_stream = new;
-		channel->instruction_stream_capacity *= 2;
+		tl->ops = new;
+		tl->ops_capacity = new_ops_capacity;
 	}
 
-	tut_print_instruction(ins);
-	Tut_Instruction *insert_at = (Tut_Instruction *)(channel->instruction_stream + next_instruction_offset);
-	*insert_at = ins;
-	tut_print_instruction(*insert_at);
-	channel->next_instruction_offset += ins_size;
-
+	tl->ops[tl->end_op_index++] = (Tut_Time_Op){tut_at(), op};
 }
 
-void tut_play(double frequency) {
+static inline float tut_play(float frequency, float duration) {
+	
+	tut_push_op((Tut_Op){.play={TUT_OP_PLAY, frequency, duration}});
 
-	Tut_Instruction ins = {
-		.kind = TUT_INS_PLAY,
-		.u.play = {.frequency = frequency},
-	};
-
-	tut_push_instruction(ins);
+	return tut_advance(duration);
 }
 
-void tut_rest(void) {
 
-	Tut_Instruction ins = {
-		.kind = TUT_INS_REST,
-	};
+int _tut_op_time_compare (const void * _a, const void * _b) {
+	const Tut_Time_Op *a = _a;
+	const Tut_Time_Op *b = _b;
 
-	tut_push_instruction(ins);
+	if (a->at == b->at) {
+		return a->op.opcode - b->op.opcode;
+	} 
+	else {
+		return (a->at < b->at) ? -1 : 1;
+	}
 }
 
-void tut_duration(double duration) {
-	Tut_Instruction ins = {
-		.kind = TUT_INS_DURATION,
-		.u.duration = duration,
-	};
 
-	tut_push_instruction(ins);
-}
+static inline void tut_push_sample(Tut_Timeline *tl, float sample) {
 
-typedef struct Tut_Instruction_Iterator {
-	Tut_Channel *channel;
-	uint8_t *at;
-} Tut_Instruction_Iterator;
+	if (tl->end_sample_index >= tl->sample_capacity) {
 
-Tut_Instruction_Iterator tut_instruction_iterator(Tut_Channel *channel) {
-	Tut_Instruction_Iterator result = {
-		.channel = channel,
-		.at = channel->instruction_stream,
-	};
+		size_t new_sample_capacity = (tl->sample_capacity != 0) ? 2*tl->sample_capacity : tut_state.sample_rate;
 
-	return result;
-}
+		void *new = realloc(tl->samples, new_sample_capacity * sizeof(tl->samples[0]));
+		assert(new != NULL);
 
-Tut_Instruction *tut_next_instruction(Tut_Instruction_Iterator *iter) {
-	Tut_Instruction *result = (Tut_Instruction *)iter->at;
+		fprintf(stderr, "REALLOCED from %d to %d samples.\n", (int)tl->sample_capacity, (int)new_sample_capacity);
 
-	if (result->kind == TUT_INS_NONE) {
-		return NULL;
+		if (new != tl->samples) {
+			fprintf(stderr, "realloc !\n");
+		}
+
+		tl->samples = new;
+		tl->sample_capacity = new_sample_capacity;
 	}
 
-	size_t size = get_instruction_size(*result);
-
-	// fprintf(stderr, "##############size: %d\niter->at:%p, iter->at+size: %p\n", (int)size, iter->at, iter->at+size);
-	iter->at += size;
-
-	tut_print_instruction(*result);
-
-	return result;
+	tl->samples[tl->end_sample_index++] = sample;
 }
 
-void tut_finalize_song(void) {
-	// for (unsigned int i = 0; i < tut_static_array_len(global_song->channels); ++i) {
-	Tut_Channel *channel = &global_song->channels[0];
 
-	Tut_Instruction_Iterator iter = tut_instruction_iterator(channel);
+static void tut_gen_samples(Tut_Timeline *tl) {
+	if (tl->samples != NULL) {
+		return;
+	}
 
-	size_t sample_index = 0;
-	int16_t *samples = global_song->samples;
+	qsort(tl->ops, tl->end_op_index, sizeof(tl->ops[0]), _tut_op_time_compare);
 
-	Tut_Instruction *ins = NULL;
+	float gen_at = 0;
 
-	while ((ins = tut_next_instruction(&iter))) {
+	for (uint64_t op_index = 0; op_index < tl->end_op_index; ++op_index) {
 
-		int samples_per_duration = (int)(channel->duration * global_song->sample_rate);
+		Tut_Time_Op time_op = tl->ops[op_index];
 
-		switch (ins->kind) {
-		case TUT_INS_PLAY: {
-			tut_print_instruction(*ins);
+		float at = time_op.at;
+		Tut_Op op = time_op.op;
+
+		{ // Fill silence
+			float delta_at = (at - gen_at);
+			int samples_per_duration = (int)(delta_at * tut_state.sample_rate);
+
 			for (int i = 0; i < samples_per_duration; ++i) {
-				double time = (double)sample_index / (double)global_song->sample_rate;
-				double signal = tut_wave_triangle(ins->u.play.frequency * time);
+				tut_push_sample(tl, 0);
+			}
+
+			gen_at = at;
+		}
+
+		switch (op.opcode) {
+		case TUT_OP_SUB_TIMELINE:
+			tut_gen_samples(op.sub_timeline.timeline);
+		break;
+		case TUT_OP_AMPLITUDE:
+		break;
+		case TUT_OP_PLAY: {
+			int samples_per_duration = (int)(op.play.duration * tut_state.sample_rate);
+
+			for (int i = 0; i < samples_per_duration; ++i) {
+				float t = ((float)i/(float)samples_per_duration);
+				float signal = tut_wave_triangle(op.play.frequency * (at + t*(op.play.duration)));
 				signal *= 0.8;
-				double t = ((double)i/(double)samples_per_duration);
 				if (t < 0.01) {
 					signal *= t/0.01;
 				}
 				else if (t > 0.3) {
 					signal *= (1-(t-0.3)/(1-0.3));
 				}
-				samples[sample_index++] = (int16_t)(signal * 0x8000);
+				tut_push_sample(tl, signal);
 			}
+
+			gen_at = at + op.play.duration;
+			
 		} break;
-		case TUT_INS_REST: {
-			for (int i = 0; i < samples_per_duration; ++i) {
-				samples[sample_index++] = 0;
-			}
-		} break;
-		case TUT_INS_DURATION: {
-			channel->duration = ins->u.duration;
-		} break;
-		default: {
-			assert(ins->kind <= TUT_INS_LAST);
-			break;
-		}
+		default:
+			fprintf(stderr, "Nah\n");
+			return;
 		}
 	}
-
-	global_song->used_samples = sample_index;
 }
 
-static void tut_write_wave_file(FILE *file_handle) {
+static void tut_save_timeline_as_wave_file(Tut_Timeline *tl, FILE *file_handle) {
 	#define four_chars(s) (uint32_t)((s[3]<<24) | (s[2]<<16) | (s[1]<<8) | s[0])
 
 
@@ -578,11 +570,16 @@ static void tut_write_wave_file(FILE *file_handle) {
 		// uint8_t bytes[]; // Remainder of wave file is bytes
 	} Wav_Header;
 
-	int16_t *samples = global_song->samples;
-	size_t num_samples = global_song->used_samples;
-	uint32_t sample_rate = global_song->sample_rate;
+	size_t num_samples = tl->end_sample_index;
+	uint32_t sample_rate = tut_state.sample_rate;
+	int16_t *samples = malloc(num_samples * sizeof(*samples));
+	size_t sample_size = sizeof(*samples);
 
-	size_t total_file_size = sizeof(Wav_Header) + num_samples*sizeof(int16_t);
+	for (int i = 0; i < (int)num_samples; ++i) {
+		samples[i] = (int16_t)(tl->samples[i] * 0x8000);
+	}
+
+	size_t total_file_size = sizeof(Wav_Header) + num_samples*sample_size;
 	
 	Wav_Header wh;
 	wh.riff_header = four_chars("RIFF");
@@ -591,17 +588,17 @@ static void tut_write_wave_file(FILE *file_handle) {
 
 	wh.fmt_header = four_chars("fmt ");
 	wh.fmt_chunk_size = 16;
-	wh.audio_format = 1; // 1 for PCM
+	wh.audio_format = 1; // 1 for 16 bit signed int  ||  3 for IEEE 754 float
 	wh.num_channels = 1;
 	wh.sample_rate = sample_rate;
-	wh.byte_rate = wh.sample_rate * wh.num_channels * sizeof(int16_t);
-	wh.sample_alignment = wh.num_channels * sizeof(int16_t);
-	wh.bit_depth = 8*sizeof(int16_t);
+	wh.byte_rate = wh.sample_rate * wh.num_channels * sample_size;
+	wh.sample_alignment = wh.num_channels * sample_size;
+	wh.bit_depth = 8 * sample_size;
 	wh.data_header = four_chars("data");
-	wh.data_bytes = num_samples*sizeof(int16_t);
+	wh.data_bytes = num_samples * sample_size;
 
 	fwrite(&wh, sizeof(wh), 1, file_handle);
-	fwrite(samples, sizeof(int16_t), num_samples, file_handle);
+	fwrite(samples, sample_size, num_samples, file_handle);
 
 	#undef four_chars
 }
