@@ -8,27 +8,51 @@ int main(void) {
 	tut_timeline(&main_timeline);
 	// Tut_Timeline melody_pat_1 = tut_make_timeline();
 	// Tut_Timeline melody_pat_2 = tut_make_timeline();
-	// Tut_Timeline drum_beat_1 = tut_make_timeline();
+	Tut_Timeline drum_beat_1 = tut_make_timeline();
 
-	double beats_per_minute = 79;
-	double seconds_per_beat = 60.0/beats_per_minute;
-	double intervals_per_beat = 24;
+	float beats_per_minute = 79;
+	float seconds_per_beat = 60.0/beats_per_minute;
+	float intervals_per_beat = 24;
 
-	double seconds_per_interval = seconds_per_beat/intervals_per_beat;
+	float spi = seconds_per_beat/intervals_per_beat;
 
-	tut_time_scale(seconds_per_interval);
+	tut_time_scale(spi);
 
 	// tut_amplitude(0.5f);
-	// tut_play_sub_timeline(&drum_beat_1);
 	// tut_pan(-0.5f);
 	// tut_play_sub_timeline(&melody_pat_1);
 	// tut_pan(0.5f);
 	// tut_play_sub_timeline(&melody_pat_2);
 
-	tut_to(3);
-	tut_play(1000, 0.5);
+	tut_timeline(&drum_beat_1);
+	tut_play(0, 1*spi);
+	tut_advance(7*spi);
+	tut_play(50, 1*spi);
+	tut_advance(7*spi);
+	tut_play(0, 1*spi);
+	tut_advance(7*spi);
+	tut_play(50, 1*spi);
+	tut_advance(7*spi);
+	tut_play(0, 0);
+
 	tut_to(0);
-	
+	for (int i = 0; i < 8; ++i) {
+		tut_to((4*i)*spi);
+		tut_play(800, 0.3*spi);
+	}
+	tut_play(0, 0);
+
+	tut_gen_samples(&drum_beat_1);
+
+	tut_timeline(&main_timeline);
+	tut_to(0);
+
+	for (int i = 0; i < 16; ++i) {
+		tut_play_sub_timeline(&drum_beat_1);
+	}
+
+	tut_to(0);
+
 	int last_pick = 0;
 
 	double f[] = {a3, e3, b3, F3, C3, G3, D3, A3, a4, e4, b4, F4, C4, G4, D4, A4};
@@ -42,12 +66,12 @@ int main(void) {
 		}
 		last_pick = pick;
 
-		tut_play(c4, 4 * seconds_per_interval);
-		tut_advance(4 * seconds_per_interval);
-		tut_play(f[(pick + 2) % tut_static_array_len(f) ], 8 * seconds_per_interval);
-		tut_play(c4, 3 * seconds_per_interval);
-		tut_advance(2 * seconds_per_interval);
-		tut_play(f[pick], 3 * seconds_per_interval);
+		tut_play(c4, 4 * spi);
+		tut_advance(4 * spi);
+		tut_play(f[(pick + 2) % tut_static_array_len(f) ], 8 * spi);
+		tut_play(c4, 3 * spi);
+		tut_advance(2 * spi);
+		tut_play(f[pick], 3 * spi);
 	}
 
 	tut_gen_samples(&main_timeline);

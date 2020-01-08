@@ -7,6 +7,7 @@
 #include <inttypes.h>
 #include <assert.h>
 #include <malloc.h>
+#include <string.h>
 #include <math.h>
 #include <stdbool.h>
 
@@ -449,6 +450,16 @@ static inline float tut_play(float frequency, float duration) {
 }
 
 
+static inline float tut_play_sub_timeline(Tut_Timeline *tl) {
+
+	tut_push_op((Tut_Op){.sub_timeline={TUT_OP_SUB_TIMELINE, tl}});
+
+	float duration = (float)tl->end_sample_index / (float)tut_state.sample_rate;
+
+	return tut_advance(duration);
+}
+
+
 int _tut_op_time_compare (const void * _a, const void * _b) {
 	const Tut_Time_Op *a = _a;
 	const Tut_Time_Op *b = _b;
@@ -462,11 +473,18 @@ int _tut_op_time_compare (const void * _a, const void * _b) {
 }
 
 
-static inline void tut_push_sample(Tut_Timeline *tl, float sample) {
+static inline void tut_add_samples(Tut_Timeline *tl, float at, float *samples, size_t num_samples) {
 
-	if (tl->end_sample_index >= tl->sample_capacity) {
+	size_t start_sample_index = (size_t)(at * tut_state.sample_rate);
+	size_t end_sample_index = start_sample_index + num_samples;
+
+	if (end_sample_index >= tl->sample_capacity) {
 
 		size_t new_sample_capacity = (tl->sample_capacity != 0) ? 2*tl->sample_capacity : tut_state.sample_rate;
+
+		while (new_sample_capacity < end_sample_index) {
+			new_sample_capacity *= 2;
+		}
 
 		void *new = realloc(tl->samples, new_sample_capacity * sizeof(tl->samples[0]));
 		assert(new != NULL);
@@ -478,12 +496,44 @@ static inline void tut_push_sample(Tut_Timeline *tl, float sample) {
 		}
 
 		tl->samples = new;
+
+		// Zero fill
+		memset(
+			tl->samples + tl->sample_capacity,
+			0,
+			(new_sample_capacity - tl->sample_capacity) * sizeof(*tl->samples)
+		);
+
 		tl->sample_capacity = new_sample_capacity;
 	}
 
-	tl->samples[tl->end_sample_index++] = sample;
+	for (size_t i = 0; i < num_samples; ++i) {
+		tl->samples[start_sample_index + i] += samples[i];
+	}
+
+	if (end_sample_index > tl->end_sample_index) {
+		tl->end_sample_index = end_sample_index;
+	}
 }
 
+void tut_normalize_samples(Tut_Timeline *tl) {
+	float max_amplitude = 0;
+
+	for (size_t i = 0; i < tl->end_sample_index; ++i) {
+		float sample = tl->samples[i];
+		if (sample < 0) {
+			sample = -sample;
+		}
+
+		if (sample > max_amplitude) {
+			max_amplitude = sample;
+		}
+	}
+
+	for (size_t i = 0; i < tl->end_sample_index; ++i) {
+		tl->samples[i] /= max_amplitude;
+	}
+}
 
 static void tut_gen_samples(Tut_Timeline *tl) {
 	if (tl->samples != NULL) {
@@ -492,8 +542,6 @@ static void tut_gen_samples(Tut_Timeline *tl) {
 
 	qsort(tl->ops, tl->end_op_index, sizeof(tl->ops[0]), _tut_op_time_compare);
 
-	float gen_at = 0;
-
 	for (uint64_t op_index = 0; op_index < tl->end_op_index; ++op_index) {
 
 		Tut_Time_Op time_op = tl->ops[op_index];
@@ -501,25 +549,30 @@ static void tut_gen_samples(Tut_Timeline *tl) {
 		float at = time_op.at;
 		Tut_Op op = time_op.op;
 
-		{ // Fill silence
-			float delta_at = (at - gen_at);
-			int samples_per_duration = (int)(delta_at * tut_state.sample_rate);
+		// { // Fill silence
+		// 	float delta_at = (at - gen_at);
+		// 	int samples_per_duration = (int)(delta_at * tut_state.sample_rate);
 
-			for (int i = 0; i < samples_per_duration; ++i) {
-				tut_push_sample(tl, 0);
-			}
+		// 	for (int i = 0; i < samples_per_duration; ++i) {
+		// 		tut_push_sample(tl, 0);
+		// 	}
 
-			gen_at = at;
-		}
+		// 	gen_at = at;
+		// }
 
 		switch (op.opcode) {
 		case TUT_OP_SUB_TIMELINE:
 			tut_gen_samples(op.sub_timeline.timeline);
+			assert(op.sub_timeline.timeline->samples);
+			tut_add_samples(tl, at, op.sub_timeline.timeline->samples, op.sub_timeline.timeline->end_sample_index);
 		break;
 		case TUT_OP_AMPLITUDE:
 		break;
 		case TUT_OP_PLAY: {
 			int samples_per_duration = (int)(op.play.duration * tut_state.sample_rate);
+
+			float *tmp_samples = malloc(samples_per_duration * sizeof(*tmp_samples));
+			assert(tmp_samples);
 
 			for (int i = 0; i < samples_per_duration; ++i) {
 				float t = ((float)i/(float)samples_per_duration);
@@ -531,10 +584,11 @@ static void tut_gen_samples(Tut_Timeline *tl) {
 				else if (t > 0.3) {
 					signal *= (1-(t-0.3)/(1-0.3));
 				}
-				tut_push_sample(tl, signal);
+				tmp_samples[i] = signal;
 			}
 
-			gen_at = at + op.play.duration;
+			tut_add_samples(tl, at, tmp_samples, (size_t)samples_per_duration);
+			free(tmp_samples);
 			
 		} break;
 		default:
@@ -542,6 +596,8 @@ static void tut_gen_samples(Tut_Timeline *tl) {
 			return;
 		}
 	}
+
+	tut_normalize_samples(tl);
 }
 
 static void tut_save_timeline_as_wave_file(Tut_Timeline *tl, FILE *file_handle) {
