@@ -318,12 +318,12 @@ typedef enum Tut_Export_File_Type {
 } Tut_Export_File_Type;
 
 typedef enum Tut_Opcode {
-	// NOTE(jakob): Ops will be sorted secondarily on the opcode, to
+	// DISREGARD(jakob): Ops will be sorted secondarily on the opcode, to
 	// ensure that the appropriate effects have been applied before
 	// TUT_OP_PLAY.
 
 	TUT_OP_NONE = 0,
-	TUT_OP_AMPLITUDE,
+	TUT_OP_VELOCITY,
 	TUT_OP_SUB_TIMELINE,
 	TUT_OP_PLAY,
 	Tut_Opcode__COUNT
@@ -336,10 +336,10 @@ typedef struct Tut_Op_Play {
 	float duration;
 } Tut_Op_Play;
 
-typedef struct Tut_Op_Amplitude {
+typedef struct Tut_Op_Velocity {
 	Tut_Opcode opcode;
-	float amplitude;
-} Tut_Op_Amplitude;
+	float velocity;
+} Tut_Op_Velocity;
 
 // typedef struct Tut_Op_Pan {
 // 	Tut_Opcode opcode;
@@ -356,7 +356,7 @@ typedef struct Tut_Op_Sub_Timeline {
 typedef union Tut_Op {
 	Tut_Opcode opcode;
 	Tut_Op_Play play;
-	Tut_Op_Amplitude amplitude;
+	Tut_Op_Velocity velocity;
 	Tut_Op_Sub_Timeline sub_timeline;
 } Tut_Op;
 
@@ -442,13 +442,18 @@ static void tut_push_op(Tut_Op op) {
 	tl->ops[tl->end_op_index++] = (Tut_Time_Op){tut_at(), op};
 }
 
-static inline float tut_play(float frequency, float duration) {
-	
+static inline void tut_play_stay(float frequency, float duration) {
 	tut_push_op((Tut_Op){.play={TUT_OP_PLAY, frequency, duration}});
+}
 
+static inline float tut_play(float frequency, float duration) {
+	tut_play_stay(frequency, duration);
 	return tut_advance(duration);
 }
 
+static inline void tut_velocity(float velocity) {
+	tut_push_op((Tut_Op){.velocity={TUT_OP_VELOCITY, velocity}});
+}
 
 static inline float tut_play_sub_timeline(Tut_Timeline *tl) {
 
@@ -459,21 +464,7 @@ static inline float tut_play_sub_timeline(Tut_Timeline *tl) {
 	return tut_advance(duration);
 }
 
-
-int _tut_op_time_compare (const void * _a, const void * _b) {
-	const Tut_Time_Op *a = _a;
-	const Tut_Time_Op *b = _b;
-
-	if (a->at == b->at) {
-		return a->op.opcode - b->op.opcode;
-	} 
-	else {
-		return (a->at < b->at) ? -1 : 1;
-	}
-}
-
-
-static inline void tut_add_samples(Tut_Timeline *tl, float at, float *samples, size_t num_samples) {
+static inline void tut_add_samples(Tut_Timeline *tl, float at, float *samples, size_t num_samples, float factor) {
 
 	size_t start_sample_index = (size_t)(at * tut_state.sample_rate);
 	size_t end_sample_index = start_sample_index + num_samples;
@@ -508,7 +499,7 @@ static inline void tut_add_samples(Tut_Timeline *tl, float at, float *samples, s
 	}
 
 	for (size_t i = 0; i < num_samples; ++i) {
-		tl->samples[start_sample_index + i] += samples[i];
+		tl->samples[start_sample_index + i] += factor * samples[i];
 	}
 
 	if (end_sample_index > tl->end_sample_index) {
@@ -535,12 +526,26 @@ void tut_normalize_samples(Tut_Timeline *tl) {
 	}
 }
 
+static int _tut_op_time_compare (const void * _a, const void * _b) {
+	const Tut_Time_Op *a = _a;
+	const Tut_Time_Op *b = _b;
+
+	if (a->at == b->at) {
+		return 0; //a->op.opcode - b->op.opcode;
+	} 
+	else {
+		return (a->at < b->at) ? -1 : 1;
+	}
+}
+
 static void tut_gen_samples(Tut_Timeline *tl) {
 	if (tl->samples != NULL) {
 		return;
 	}
 
 	qsort(tl->ops, tl->end_op_index, sizeof(tl->ops[0]), _tut_op_time_compare);
+	
+	float velocity = 1;
 
 	for (uint64_t op_index = 0; op_index < tl->end_op_index; ++op_index) {
 
@@ -549,24 +554,14 @@ static void tut_gen_samples(Tut_Timeline *tl) {
 		float at = time_op.at;
 		Tut_Op op = time_op.op;
 
-		// { // Fill silence
-		// 	float delta_at = (at - gen_at);
-		// 	int samples_per_duration = (int)(delta_at * tut_state.sample_rate);
-
-		// 	for (int i = 0; i < samples_per_duration; ++i) {
-		// 		tut_push_sample(tl, 0);
-		// 	}
-
-		// 	gen_at = at;
-		// }
-
 		switch (op.opcode) {
 		case TUT_OP_SUB_TIMELINE:
 			tut_gen_samples(op.sub_timeline.timeline);
 			assert(op.sub_timeline.timeline->samples);
-			tut_add_samples(tl, at, op.sub_timeline.timeline->samples, op.sub_timeline.timeline->end_sample_index);
+			tut_add_samples(tl, at, op.sub_timeline.timeline->samples, op.sub_timeline.timeline->end_sample_index, velocity);
 		break;
-		case TUT_OP_AMPLITUDE:
+		case TUT_OP_VELOCITY:
+			velocity = op.velocity.velocity;
 		break;
 		case TUT_OP_PLAY: {
 			int samples_per_duration = (int)(op.play.duration * tut_state.sample_rate);
@@ -587,12 +582,12 @@ static void tut_gen_samples(Tut_Timeline *tl) {
 				tmp_samples[i] = signal;
 			}
 
-			tut_add_samples(tl, at, tmp_samples, (size_t)samples_per_duration);
+			tut_add_samples(tl, at, tmp_samples, (size_t)samples_per_duration, velocity);
 			free(tmp_samples);
-			
+		
 		} break;
 		default:
-			fprintf(stderr, "Nah\n");
+			assert(!"Nah");
 			return;
 		}
 	}
