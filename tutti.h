@@ -298,30 +298,12 @@ double tut_wave_saw(double v) {
 	return v;
 }
 
-// enum {TUT_TIMELINE_BUCKET_ops_CAPACITY = 8};
-
-// typedef struct Tut_Timeline_Bucket {
-//  double pivot; // NOTE(jakob): the timestamp in seconds
-//  union {
-//      struct Tut_Timeline_Bucket *left;
-//      struct Tut_Timeline_Bucket *right;
-//  } u;
-// } Tut_Timeline_Bucket;
-
-// typedef struct Tut_Timeline {
-	
-// } Tut_Timeline;
-
 
 typedef enum Tut_Export_File_Type {
 	TUT_FILE_WAV = 0,
 } Tut_Export_File_Type;
 
 typedef enum Tut_Opcode {
-	// DISREGARD(jakob): Ops will be sorted secondarily on the opcode, to
-	// ensure that the appropriate effects have been applied before
-	// TUT_OP_PLAY.
-
 	TUT_OP_NONE = 0,
 	TUT_OP_VELOCITY,
 	TUT_OP_SUB_TIMELINE,
@@ -455,9 +437,13 @@ static inline void tut_velocity(float velocity) {
 	tut_push_op((Tut_Op){.velocity={TUT_OP_VELOCITY, velocity}});
 }
 
-static inline float tut_play_sub_timeline(Tut_Timeline *tl) {
-
+static inline void tut_play_timeline_stay(Tut_Timeline *tl) {
 	tut_push_op((Tut_Op){.sub_timeline={TUT_OP_SUB_TIMELINE, tl}});
+}
+
+static inline float tut_play_timeline(Tut_Timeline *tl) {
+
+	tut_play_timeline_stay(tl);
 
 	float duration = (float)tl->end_sample_index / (float)tut_state.sample_rate;
 
@@ -507,7 +493,7 @@ static inline void tut_add_samples(Tut_Timeline *tl, float at, float *samples, s
 	}
 }
 
-void tut_normalize_samples(Tut_Timeline *tl) {
+void tut_normalize_samples(Tut_Timeline *tl, float factor) {
 	float max_amplitude = 0;
 
 	for (size_t i = 0; i < tl->end_sample_index; ++i) {
@@ -522,7 +508,7 @@ void tut_normalize_samples(Tut_Timeline *tl) {
 	}
 
 	for (size_t i = 0; i < tl->end_sample_index; ++i) {
-		tl->samples[i] /= max_amplitude;
+		tl->samples[i] *= factor/max_amplitude;
 	}
 }
 
@@ -592,7 +578,7 @@ static void tut_gen_samples(Tut_Timeline *tl) {
 		}
 	}
 
-	tut_normalize_samples(tl);
+	tut_normalize_samples(tl, 0.8);
 }
 
 static void tut_save_timeline_as_wave_file(Tut_Timeline *tl, FILE *file_handle) {
