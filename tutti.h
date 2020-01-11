@@ -243,14 +243,16 @@ Note Frequency in hertz (Wavelength in centimeters)
 #define A8 (S49 * CONCERT_PITCH)
 #define b8 (S50 * CONCERT_PITCH)
 
-#define tut_static_array_len(A) \
+#define TUT_NUM_ELEMS(A) \
 	(sizeof(A)/sizeof(*(A)))
 
-#define tut_offset_of(s,memb) \
+#define TUT_OFFSET_OF(s,memb) \
 	((size_t)((char *)&((s *)0)->memb - (char *)0))
 
+#define TUT_SEQUENCE(S, I) for (int _i=0, _c; (_c=(S)[_i]); ++_i, tut_advance(I))
+
 #define TUT_INSTRUMENT(name) \
-    void name(float *samples, int num_samples, float frequency, float duration, float at, float velocity) 
+	float name(float *samples, int num_samples, float frequency, float duration, float at, float velocity) 
 typedef TUT_INSTRUMENT(Tut_Instrument);
 
 #define TUT_SINE_MEAN_MAG 0.637
@@ -272,7 +274,7 @@ double tut_wave_triangle(double v) {
 	else if (v < 0.75) {
 		v = 1 - 2*((v - 0.25) / 0.5);
 	}
-	else {          
+	else {
 		v = -1 + (v - 0.75) / 0.25;
 	}
 
@@ -282,22 +284,23 @@ double tut_wave_triangle(double v) {
 double tut_wave_square(double v) {
 	v -= (double)(int64_t)v;
 
-    if (v < 0.45) {
-        v = 1;
-    }
-    else if (v < 0.5) {
-        v = 1 - (v-0.45)/0.05;
-    }
-    else if (v < 0.55) {
-        v = (v-0.5)/0.05;
-    }
-    else {
-        v = 0;
-    }
+	// if (v < 0.45) {
+	// 	v = 1;
+	// }
+	// else if (v < 0.5) {
+	// 	v = 1 - (v-0.45)/0.05;
+	// }
+	// else if (v < 0.55) {
+	// 	v = (v-0.5)/0.05;
+	// }
+	// else {
+	// 	v = 0;
+	// }
 
-    v = v*2 - 1;
-	// if (v < 0.5) v = 1;
-	// else v = -1;
+	// v = v*2 - 1;
+
+	if (v < 0.5) v = 1;
+	else v = -1;
 
 	v *= TUT_TRIANGLE_MEAN_MAG/TUT_SQUARE_MEAN_MAG;
 
@@ -322,7 +325,7 @@ typedef enum Tut_Export_File_Type {
 
 typedef enum Tut_Opcode {
 	TUT_OP_NONE = 0,
-    TUT_OP_INSTRUMENT,
+	TUT_OP_INSTRUMENT,
 	TUT_OP_VELOCITY,
 	TUT_OP_SUB_TIMELINE,
 	TUT_OP_PLAY,
@@ -337,8 +340,8 @@ typedef struct Tut_Op_Play {
 } Tut_Op_Play;
 
 typedef struct Tut_Op_Instrument {
-    Tut_Opcode opcode;
-    Tut_Instrument *instrument;
+	Tut_Opcode opcode;
+	Tut_Instrument *instrument;
 } Tut_Op_Instrument;
 
 typedef struct Tut_Op_Velocity {
@@ -347,8 +350,8 @@ typedef struct Tut_Op_Velocity {
 } Tut_Op_Velocity;
 
 // typedef struct Tut_Op_Pan {
-// 	Tut_Opcode opcode;
-// 	float pan;
+//  Tut_Opcode opcode;
+//  float pan;
 // } Tut_Op_Pan;
 
 struct Tut_Timeline;
@@ -361,7 +364,7 @@ typedef struct Tut_Op_Sub_Timeline {
 typedef union Tut_Op {
 	Tut_Opcode opcode;
 	Tut_Op_Play play;
-    Tut_Op_Instrument instrument;
+	Tut_Op_Instrument instrument;
 	Tut_Op_Velocity velocity;
 	Tut_Op_Sub_Timeline sub_timeline;
 } Tut_Op;
@@ -389,41 +392,38 @@ typedef struct Tut_Song {
 
 
 static TUT_INSTRUMENT(tut_default_instrument) {
-    //(float *samples, int num_samples, float frequency, float duration, float at, float velocity)
+	//(float *samples, int num_samples, float frequency, float duration, float at, float velocity)
 
-    (void)velocity;
+	(void)velocity;
 
-    for (int i = 0; i < num_samples; ++i) {
-        float t = ((float)i/(float)num_samples);
-        float signal = tut_wave_triangle(frequency * (at + t*duration));
-        const float attack = 0.01;
-        const float release = 0.5;
-        signal *= 0.8;
-        if (t < attack) {
-            signal *= t/attack;
-        }
-        else if (t > release) {
-            signal *= (1-(t-release)/(1-release));
-        }
-        samples[i] = signal;
-    }
+	for (int i = 0; i < num_samples; ++i) {
+		float t = ((float)i/(float)num_samples);
+		float signal = tut_wave_triangle(frequency * (at + t*duration));
+		const float attack = 0.01;
+		const float release = 0.5;
+		signal *= 0.8;
+		if (t < attack) {
+			signal *= t/attack;
+		}
+		else if (t > release) {
+			signal *= (1-(t-release)/(1-release));
+		}
+		samples[i] = signal;
+	}
+
+    return 0;
 }
 
 typedef struct Tut_Global_State {
 	Tut_Timeline *timeline;
-	float amplitude;
-	float pan;
 	float time_scale;
 	float at;
 	uint32_t sample_rate;
-	Tut_Instrument *instrument;
 } Tut_Global_State;
 
 static Tut_Global_State tut_state = {
 	.sample_rate = 44100,
 	.time_scale = 1,
-	.amplitude = 0.8f,
-	.instrument = tut_default_instrument,
 };
 
 static inline float tut_at(void) {
@@ -457,13 +457,13 @@ static void tut_push_op(Tut_Op op) {
 
 	if (tl->end_op_index >= tl->ops_capacity) {
 		size_t new_ops_capacity = (tl->ops_capacity != 0) ? 2*tl->ops_capacity : 8;
-		fprintf(stderr, "next size: %d\n", (int)(new_ops_capacity * sizeof(tl->ops[0])));
+		// fprintf(stderr, "next size: %d\n", (int)(new_ops_capacity * sizeof(tl->ops[0])));
 		void *new = realloc(tl->ops, new_ops_capacity * sizeof(tl->ops[0]));
 		assert(new != NULL);
 
-		if (new != tl->ops) {
-			fprintf(stderr, "realloc !\n");
-		}
+		// if (new != tl->ops) {
+		// 	fprintf(stderr, "realloc !\n");
+		// }
 
 		tl->ops = new;
 		tl->ops_capacity = new_ops_capacity;
@@ -486,10 +486,10 @@ static inline void tut_velocity(float velocity) {
 }
 
 static inline void tut_instrument(Tut_Instrument *instrument) {
-    if (!instrument) {
-        instrument = tut_default_instrument;
-    }
-    tut_push_op((Tut_Op){.instrument={TUT_OP_INSTRUMENT, instrument}});
+	if (!instrument) {
+		instrument = tut_default_instrument;
+	}
+	tut_push_op((Tut_Op){.instrument={TUT_OP_INSTRUMENT, instrument}});
 }
 
 static inline void tut_play_timeline_stay(Tut_Timeline *tl) {
@@ -522,11 +522,9 @@ static inline void tut_add_samples(Tut_Timeline *tl, float at, float *samples, s
 		void *new = realloc(tl->samples, new_sample_capacity * sizeof(tl->samples[0]));
 		assert(new != NULL);
 
-		fprintf(stderr, "REALLOCED from %d to %d samples.\n", (int)tl->sample_capacity, (int)new_sample_capacity);
-
-		if (new != tl->samples) {
-			fprintf(stderr, "realloc !\n");
-		}
+		// if (new != tl->samples) {
+		// 	fprintf(stderr, "REALLOCED from %d to %d samples.\n", (int)tl->sample_capacity, (int)new_sample_capacity);
+		// }
 
 		tl->samples = new;
 
@@ -574,7 +572,7 @@ static int _tut_op_time_compare (const void * _a, const void * _b) {
 
 	if (a->at == b->at) {
 		return 0; //a->op.opcode - b->op.opcode;
-	} 
+	}
 	else {
 		return (a->at < b->at) ? -1 : 1;
 	}
@@ -588,7 +586,7 @@ static void tut_gen_samples(Tut_Timeline *tl) {
 	qsort(tl->ops, tl->end_op_index, sizeof(tl->ops[0]), _tut_op_time_compare);
 	
 	float velocity = 1;
-    Tut_Instrument *instrument = tut_default_instrument;
+	Tut_Instrument *instrument = tut_default_instrument;
 
 	for (uint64_t op_index = 0; op_index < tl->end_op_index; ++op_index) {
 
@@ -598,34 +596,35 @@ static void tut_gen_samples(Tut_Timeline *tl) {
 		Tut_Op op = time_op.op;
 
 		switch (op.opcode) {
-		case TUT_OP_SUB_TIMELINE:
-			tut_gen_samples(op.sub_timeline.timeline);
-			assert(op.sub_timeline.timeline->samples);
-			tut_add_samples(tl, at, op.sub_timeline.timeline->samples, op.sub_timeline.timeline->end_sample_index, velocity);
-		break;
-		case TUT_OP_VELOCITY:
-			velocity = op.velocity.velocity;
-		break;
-		case TUT_OP_PLAY: {
-			int samples_per_duration = (int)(op.play.duration * tut_state.sample_rate);
+			case TUT_OP_SUB_TIMELINE: {
+				tut_gen_samples(op.sub_timeline.timeline);
+				assert(op.sub_timeline.timeline->samples);
+				tut_add_samples(tl, at, op.sub_timeline.timeline->samples, op.sub_timeline.timeline->end_sample_index, velocity);
+				break;
+			}
+			case TUT_OP_VELOCITY: {
+				velocity = op.velocity.velocity;
+				break;
+			}
+			case TUT_OP_PLAY: {
+				int samples_per_duration = (int)(op.play.duration * tut_state.sample_rate);
 
-			float *tmp_samples = calloc(samples_per_duration, sizeof(*tmp_samples));
-			assert(tmp_samples);
+				float *tmp_samples = calloc(samples_per_duration, sizeof(*tmp_samples));
+				assert(tmp_samples);
 
-			instrument(tmp_samples, samples_per_duration, op.play.frequency, op.play.duration, at, velocity);
-			// tut_state.instrument(tmp_samples, num_samples, at, velocity);
+				float offset = instrument(tmp_samples, samples_per_duration, op.play.frequency, op.play.duration, at, velocity);
 
-			tut_add_samples(tl, at, tmp_samples, (size_t)samples_per_duration, velocity);
-			free(tmp_samples);
-		
-		} break;
-        case TUT_OP_INSTRUMENT: {
-            instrument = op.instrument.instrument;
-        }
-        break;
-		default:
-			assert(!"Nah");
-			return;
+				tut_add_samples(tl, at + offset, tmp_samples, (size_t)samples_per_duration, velocity);
+				free(tmp_samples);
+				break;
+			}
+			case TUT_OP_INSTRUMENT: {
+				instrument = op.instrument.instrument;
+				break;
+			}
+			default: {
+				assert(!"Invalid default case");
+			}
 		}
 	}
 
@@ -633,16 +632,16 @@ static void tut_gen_samples(Tut_Timeline *tl) {
 }
 
 static void tut_save_timeline_as_wave_file(Tut_Timeline *tl, FILE *file_handle) {
-	#define four_chars(s) (uint32_t)((s[3]<<24) | (s[2]<<16) | (s[1]<<8) | s[0])
 
+	#define four_chars(s) (uint32_t)((s[3]<<24) | (s[2]<<16) | (s[1]<<8) | s[0])
 
 	typedef struct Wav_Header {
 		// RIFF Header
 		uint32_t riff_header; // Contains "RIFF"
 		uint32_t wav_size; // Size of the wav portion of the file, which follows the first 8 bytes. File size - 8
-		uint32_t wave_header; // Contains "WAVE"
 		
 		// Format Header
+		uint32_t wave_header; // Contains "WAVE"
 		uint32_t fmt_header; // Contains "fmt " (includes trailing space)
 		uint32_t fmt_chunk_size; // Should be 16 for PCM
 		uint16_t audio_format; // Should be 1 for PCM. 3 for IEEE Float

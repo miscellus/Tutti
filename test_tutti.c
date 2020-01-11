@@ -10,14 +10,14 @@
 #define SPI                 SECONDS_PER_BEAT/INTERVALS_PER_BEAT
 
 static TUT_INSTRUMENT(instrument_cello_ish) {
-    //(float *samples, int num_samples, float frequency, float duration, float at, float velocity)
+	//(float *samples, int num_samples, float frequency, float duration, float at, float velocity)
 
 	(void)velocity;
 
 	for (int i = 0; i < num_samples; ++i) {
 		float t = ((float)i/(float)num_samples);
 		float signal;
-		signal  = tut_wave_square(frequency * (at + t*duration));
+		signal  = 0.4*tut_wave_saw(frequency * (at + t*duration));
 		signal += 0.3*tut_wave_triangle(1.01*frequency * (at + t*duration));
 		signal += 0.1*tut_wave_triangle(4*frequency * (at + t*duration));
 		const float attack = 0.2;
@@ -34,15 +34,19 @@ static TUT_INSTRUMENT(instrument_cello_ish) {
 }
 
 static TUT_INSTRUMENT(instrument_drum) {
-    //(float *samples, int num_samples, float frequency, float duration, float at, float velocity)
+	//(float *samples, int num_samples, float frequency, float duration, float at, float velocity)
 
 	(void)velocity;
+	(void)at;
 
 	for (int i = 0; i < num_samples; ++i) {
 		float t = ((float)i/(float)num_samples);
-		float frequency_bend = frequency;
-		float time = t*duration;
-		float signal  = tut_wave_square(frequency_bend * time);
+		float f_now = frequency + t*((frequency*0.95 - frequency)/duration);
+		float now = t*duration;
+		float signal_square = tut_wave_sine(f_now * now);
+		float signal_sine = tut_wave_square(f_now * now);
+
+		float signal = (1-t*t)*signal_square + t*t*signal_sine;
 
 		const float attack = 0.001;
 		const float release = attack+0.2;
@@ -54,11 +58,47 @@ static TUT_INSTRUMENT(instrument_drum) {
 		else if (t > release) {
 			envelope = (1-(t-release)/(1-release));
 		}
+		if (t < 0.005){
+			signal += (float)rand()/(float)RAND_MAX * 2 - 1;
+		}
 
 		signal *= envelope;
 
+
 		samples[i] = signal;
 	}
+}
+
+static TUT_INSTRUMENT(instrument_hihat) {
+	//(float *samples, int num_samples, float frequency, float duration, float at, float velocity)
+
+	(void)velocity;
+	(void)at;
+
+	float old_signal = 0;
+
+	for (int i = 0; i < num_samples; ++i) {
+		float t = ((float)i/(float)num_samples);
+
+		float signal = ((float)rand()/(float)RAND_MAX)*2 - 1;
+
+		float envelope = 1;
+
+
+		if (t > 0.07) {
+			envelope = 1-(t-0.1)/(1-0.1);
+			envelope *= envelope;
+			envelope *= 0.5;
+		}
+
+		signal *= envelope;
+
+		old_signal = 0.95*old_signal + 0.05*signal;
+
+		samples[i] = signal - old_signal;
+	}
+
+	return 0;
 }
 
 static inline void play_triade(float frequency1, float frequency2, float frequency3) {
@@ -124,23 +164,40 @@ static Tut_Timeline make_bass_timeline() {
 	return tl;
 }
 
-#define TUT_FOR_STRING(S, I) for (int i=0, c; (c=(S)[i]) != '\0'; ++i, tut_advance(I))
 
 static Tut_Timeline make_drum_timeline() {
 	Tut_Timeline tl = tut_make_timeline();
 	tut_timeline(&tl);
 	tut_to(0);
-	tut_instrument(instrument_drum);
 
-	for (int j = 0; j < 4; ++j)
-	{
-		TUT_FOR_STRING("#..#..#.",2*SPI) {
-			if (c == '#') {
-				tut_play_stay(50, SPI);
-			}
+	TUT_SEQUENCE(
+	"x-----h-s--x----x-----h-s-------"
+	"x-----h-s--x----x-----h-s-----h-"
+	,SPI) {
+		switch(_c) {
+			case 'x':
+				tut_velocity(1);
+				tut_instrument(instrument_drum);
+				tut_play_stay(60, 1.5*SPI);
+				break;
+			case 's':
+				tut_velocity(1);
+				tut_instrument(instrument_drum);
+				tut_play_stay(250, 2*SPI);
+				break;
+			case 'h':
+				tut_velocity(0.2);
+				tut_instrument(instrument_hihat);
+				tut_play_stay(700, 4*SPI);
+				break;
 		}
+		// if ((_i & 1) == 0) {
+		// 	tut_velocity((_i&1) ? 0.1 : 0.2);
+		// 	tut_instrument(instrument_hihat);
+		// 	tut_play_stay(1000, 1*SPI);
+		// }
 	}
-	
+
 	tut_gen_samples(&tl);
 	return tl;
 }
@@ -154,14 +211,20 @@ int main(void) {
 
 	tut_timeline(&main_timeline);
 	tut_to(0);
+	tut_instrument(instrument_cello_ish);
 
-	for (int i = 0; i < 4; ++i) {
-		tut_velocity(1);
+	tut_play_stay(f2, 16*SPI);
+	tut_play(f3, 16*SPI);
+
+	tut_play_timeline_stay(&arpeggio_piano_timeline);
+	tut_play_timeline_stay(&bass_piano_timeline);
+	tut_advance(64*SPI);
+
+	for (int i = 0; i < 3; ++i) {
 		tut_play_timeline_stay(&drum_timeline);
-		tut_velocity(0.9);
 		tut_play_timeline_stay(&arpeggio_piano_timeline);
-		tut_velocity(1);
-		tut_play_timeline(&bass_piano_timeline);
+		tut_play_timeline_stay(&bass_piano_timeline);
+		tut_advance(64*SPI);
 	}
 
 	tut_gen_samples(&main_timeline);
