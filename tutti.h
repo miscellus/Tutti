@@ -11,14 +11,15 @@
 #include <math.h>
 #include <stdbool.h>
 
-#ifndef PI
-#define PI 3.141592653589793
+#ifndef TUT_PI
+#define TUT_PI 3.141592653589793
 #endif
 
-#ifndef TAU
-#define TAU 6.283185307179586
+#ifndef TUT_TAU
+#define TUT_TAU 6.283185307179586
 #endif
 
+#ifdef TUT_INCLUDE_COMMON_NOTES
 /* Step sizes */
 #define s57 0.03716272234383503  //2**(-57/12)
 #define s56 0.03937253280921478  //2**(-56/12)
@@ -77,6 +78,8 @@
 #define s3  0.8408964152537145   //2**(-3/12)
 #define s2  0.8908987181403393   //2**(-2/12)
 #define s1  0.9438743126816935   //2**(-1/12)
+#define s0  1                    //2**(-0/12)
+#define S0  1                    //2**(0/12)
 #define S1  1.0594630943592953   //2**(1/12)
 #define S2  1.122462048309373    //2**(2/12)
 #define S3  1.189207115002721    //2**(3/12)
@@ -243,6 +246,8 @@ Note Frequency in hertz (Wavelength in centimeters)
 #define A8 (S49 * CONCERT_PITCH)
 #define b8 (S50 * CONCERT_PITCH)
 
+#endif
+
 #define TUT_NUM_ELEMS(A) \
 	(sizeof(A)/sizeof(*(A)))
 
@@ -260,7 +265,7 @@ typedef TUT_INSTRUMENT(Tut_Instrument);
 #define TUT_SQUARE_MEAN_MAG 1
 
 double tut_wave_sine(double v) {
-	v = sin(TAU * v);
+	v = sin(TUT_TAU * v);
 	v *= TUT_TRIANGLE_MEAN_MAG/TUT_SINE_MEAN_MAG;
 	return v;
 }
@@ -316,6 +321,46 @@ double tut_wave_saw(double v) {
 	// TODO(jakob): What is the rectified mean magnitude of a saw wave? 
 
 	return v;
+}
+
+static inline float tut_max(float a, float b) {
+    return a > b ? a : b;
+}
+
+static inline float tut_min(float a, float b) {
+    return a < b ? a : b;
+}
+
+static float tut_envelope(float t, float *envelope, int num_points) {
+
+    
+    // Example:
+    //
+    // float envelope[] = {
+    //     0,    0,
+    //     0.01, 1,
+    //     1,    0,
+    // };
+
+    // amplitude = tut_envelope(t, envelope, 3);
+    
+    
+    float min_t = envelope[0];
+    float min_v = envelope[1];
+    float max_t;
+    float max_v;
+
+    for (int i = 2; i < num_points; i += 2) {
+        max_t = envelope[i];
+        max_v = envelope[i+1];
+        if (t < max_t) {
+            return min_v + ((t-min_t)/(max_t-min_t))*(max_v-min_v);
+        }
+        min_t = max_t;
+        min_v = max_v;
+    }
+
+    return max_v;
 }
 
 
@@ -472,12 +517,12 @@ static void tut_push_op(Tut_Op op) {
 	tl->ops[tl->end_op_index++] = (Tut_Time_Op){tut_at(), op};
 }
 
-static inline void tut_play_stay(float frequency, float duration) {
+static inline void tut_play(float frequency, float duration) {
 	tut_push_op((Tut_Op){.play={TUT_OP_PLAY, frequency, duration}});
 }
 
-static inline float tut_play(float frequency, float duration) {
-	tut_play_stay(frequency, duration);
+static inline float tut_play_advance(float frequency, float duration) {
+	tut_play(frequency, duration);
 	return tut_advance(duration);
 }
 
@@ -492,14 +537,14 @@ static inline void tut_instrument(Tut_Instrument *instrument) {
 	tut_push_op((Tut_Op){.instrument={TUT_OP_INSTRUMENT, instrument}});
 }
 
-static inline void tut_play_timeline_stay(Tut_Timeline *tl) {
+static inline void tut_play_timeline(Tut_Timeline *tl) {
 	tut_push_op((Tut_Op){.sub_timeline={TUT_OP_SUB_TIMELINE, tl}});
 }
 
 
-static inline float tut_play_timeline(Tut_Timeline *tl) {
+static inline float tut_play_timeline_advance(Tut_Timeline *tl) {
 
-	tut_play_timeline_stay(tl);
+	tut_play_timeline(tl);
 
 	float duration = (float)tl->end_sample_index / (float)tut_state.sample_rate;
 
@@ -509,6 +554,7 @@ static inline float tut_play_timeline(Tut_Timeline *tl) {
 static inline void tut_add_samples(Tut_Timeline *tl, float at, float *samples, size_t num_samples, float factor) {
 
 	size_t start_sample_index = (size_t)(at * tut_state.sample_rate);
+	start_sample_index = tut_max(0, start_sample_index);
 	size_t end_sample_index = start_sample_index + num_samples;
 
 	if (end_sample_index >= tl->sample_capacity) {
