@@ -377,37 +377,36 @@ typedef enum Tut_Opcode {
 	Tut_Opcode__COUNT
 } Tut_Opcode;
 
+typedef struct Tut_Op_Common {
+	Tut_Opcode opcode;
+	uint32_t sequence_number;
+} Tut_Op_Common;
 
 typedef struct Tut_Op_Play {
-	Tut_Opcode opcode;
+	Tut_Op_Common common;
 	float frequency;
 	float duration;
 } Tut_Op_Play;
 
 typedef struct Tut_Op_Instrument {
-	Tut_Opcode opcode;
+	Tut_Op_Common common;
 	Tut_Instrument *instrument;
 } Tut_Op_Instrument;
 
 typedef struct Tut_Op_Velocity {
-	Tut_Opcode opcode;
+	Tut_Op_Common common;
 	float velocity;
 } Tut_Op_Velocity;
-
-// typedef struct Tut_Op_Pan {
-//  Tut_Opcode opcode;
-//  float pan;
-// } Tut_Op_Pan;
 
 struct Tut_Timeline;
 
 typedef struct Tut_Op_Sub_Timeline {
-	Tut_Opcode opcode;
+	Tut_Op_Common common;
 	struct Tut_Timeline *timeline;
 } Tut_Op_Sub_Timeline;
 
 typedef union Tut_Op {
-	Tut_Opcode opcode;
+	Tut_Op_Common common;
 	Tut_Op_Play play;
 	Tut_Op_Instrument instrument;
 	Tut_Op_Velocity velocity;
@@ -428,13 +427,6 @@ typedef struct Tut_Timeline {
 	uint64_t end_sample_index;
 	float *samples;
 } Tut_Timeline;
-
-typedef struct Tut_Song {
-	int16_t *samples;
-	size_t num_samples;
-	size_t used_samples;
-} Tut_Song;
-
 
 static TUT_INSTRUMENT(tut_default_instrument) {
 	//(float *samples, int num_samples, float frequency, float duration, float at, float velocity)
@@ -464,6 +456,7 @@ typedef struct Tut_Global_State {
 	float time_scale;
 	float at;
 	uint32_t sample_rate;
+	uint32_t sequence_number;
 } Tut_Global_State;
 
 static Tut_Global_State tut_state = {
@@ -518,7 +511,13 @@ static void tut_push_op(Tut_Op op) {
 }
 
 static inline void tut_play(float frequency, float duration) {
-	tut_push_op((Tut_Op){.play={TUT_OP_PLAY, frequency, duration}});
+	tut_push_op((Tut_Op){
+		.play={
+			.common={TUT_OP_PLAY, tut_state.sequence_number++},
+			.frequency=frequency,
+			.duration=duration,
+		}
+	});
 }
 
 static inline float tut_play_advance(float frequency, float duration) {
@@ -527,18 +526,33 @@ static inline float tut_play_advance(float frequency, float duration) {
 }
 
 static inline void tut_velocity(float velocity) {
-	tut_push_op((Tut_Op){.velocity={TUT_OP_VELOCITY, velocity}});
+	tut_push_op((Tut_Op){
+		.velocity={
+			.common={TUT_OP_VELOCITY, tut_state.sequence_number++},
+			.velocity=velocity,
+		}
+	});
 }
 
 static inline void tut_instrument(Tut_Instrument *instrument) {
 	if (!instrument) {
 		instrument = tut_default_instrument;
 	}
-	tut_push_op((Tut_Op){.instrument={TUT_OP_INSTRUMENT, instrument}});
+	tut_push_op((Tut_Op){
+		.instrument={
+			.common={TUT_OP_INSTRUMENT, tut_state.sequence_number++},
+			.instrument=instrument,
+		}
+	});
 }
 
 static inline void tut_play_timeline(Tut_Timeline *tl) {
-	tut_push_op((Tut_Op){.sub_timeline={TUT_OP_SUB_TIMELINE, tl}});
+	tut_push_op((Tut_Op){
+		.sub_timeline={
+			.common={TUT_OP_SUB_TIMELINE, tut_state.sequence_number++},
+			.timeline=tl
+		}
+	});
 }
 
 
@@ -617,7 +631,7 @@ static int _tut_op_time_compare (const void * _a, const void * _b) {
 	const Tut_Time_Op *b = _b;
 
 	if (a->at == b->at) {
-		return 0; //a->op.opcode - b->op.opcode;
+		return a->op.common.sequence_number - b->op.common.sequence_number;
 	}
 	else {
 		return (a->at < b->at) ? -1 : 1;
@@ -641,7 +655,7 @@ static void tut_gen_samples(Tut_Timeline *tl) {
 		float at = time_op.at;
 		Tut_Op op = time_op.op;
 
-		switch (op.opcode) {
+		switch (op.common.opcode) {
 			case TUT_OP_SUB_TIMELINE: {
 				tut_gen_samples(op.sub_timeline.timeline);
 				assert(op.sub_timeline.timeline->samples);

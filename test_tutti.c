@@ -46,9 +46,11 @@ static TUT_INSTRUMENT(instrument_drum) {
 
 	(void)velocity;
 
-	float frequency_end = tut_max(frequency-100, 0);
+	double frequency_end = tut_max(frequency*0.5, 0);
 
-	float frequency_quantum = (frequency_end - frequency)/num_samples;
+	double frequency_quantum = (frequency_end - frequency)/num_samples;
+
+	double f = frequency;
 
 	float amplitude = 0.8;
 
@@ -57,62 +59,84 @@ static TUT_INSTRUMENT(instrument_drum) {
 	float envelope[] = {
 	// time    amplitude
 		0,         0,
-		0.01,      1,
-		0.5,       0.1,
+		0.1,    1,
+		0.4,      0.1,
+		0.9,      0.05,
 		1,         0,
 	};
+
+	float env_noise[] = {
+		0, 0.7,
+		0.01, 0.1,
+		0.1, 0,
+	};
+
+	double pos = 0;
 
 	for (int i = 0; i < num_samples; ++i) {
 		float t = ((float)i/(float)num_samples);
 
 		amplitude = tut_envelope(t, envelope, sizeof(envelope)/sizeof(*envelope));
 		
-		samples[i] = amplitude * tut_wave_sine(at * inv_samples_per_second);
+		float timbre = tut_wave_sine(pos * inv_samples_per_second) + 0.3*tut_wave_square(pos * inv_samples_per_second);
+		float noise = ((float)rand()/(float)RAND_MAX * 2 - 1) * tut_envelope(t, env_noise, sizeof(env_noise)/sizeof(*env_noise));
+
+
+
+		samples[i] = amplitude * timbre + noise;
 		
-		at += frequency;
-		frequency += frequency_quantum;
+		pos += f;
+		f += frequency_quantum;
 	}
 
-	return -0.01*duration;
+	return 0;
 }
 
 static TUT_INSTRUMENT(instrument_snare_drum) {
 	//(float *samples, int num_samples, float frequency, float duration, float at, float velocity)
 
 	(void)velocity;
-	(void)at;
+
+	double frequency_end = tut_max(frequency*0.5, 0);
+
+	double frequency_quantum = (frequency_end - frequency)/num_samples;
+
+	double f = frequency;
+
+	float amplitude = 0.8;
+
+	float inv_samples_per_second = 1.0/tut_state.sample_rate;
+
+	float envelope[] = {
+	// time    amplitude
+		0,         0,
+		0.01,    1,
+		0.1,      0,
+	};
+
+	float env_noise[] = {
+		0, 0.0,
+		0.001, 1,
+		0.1, 0.1,
+		1, 0,
+	};
+
+	double pos = 0;
 
 	for (int i = 0; i < num_samples; ++i) {
 		float t = ((float)i/(float)num_samples);
-		float t_ = t/0.2;
-		float f_now = frequency + t_*((frequency*0.95 - frequency)/duration);
-		float now = t_*duration;
-		float signal = tut_wave_square(f_now * now);
 
-
-		const float attack = 0.001;
-		const float release = attack+0.2;
-		float envelope = 1;
-
-		if (t_ < attack) {
-			envelope = t_/attack;
-		}
-		else if (t_ > 1) {
-			envelope = 1;
-		}
-		else if (t_ > release) {
-			envelope = (1-(t-release)/(1-release));
-		}
+		amplitude = tut_envelope(t, envelope, sizeof(envelope)/sizeof(*envelope));
 		
-		signal *= envelope;
-
-		if (t_ > 1){
-			signal += (float)rand()/(float)RAND_MAX * 2 - 1;
-		}
+		float timbre = tut_wave_sine(pos * inv_samples_per_second) + 0.3*tut_wave_square(pos * inv_samples_per_second);
+		float noise = ((float)rand()/(float)RAND_MAX * 2 - 1) * tut_envelope(t, env_noise, sizeof(env_noise)/sizeof(*env_noise));
 
 
 
-		samples[i] = signal;
+		samples[i] = amplitude * timbre + noise;
+		
+		pos += f;
+		f += frequency_quantum;
 	}
 
 	return 0;
@@ -135,7 +159,7 @@ static TUT_INSTRUMENT(instrument_hihat) {
 
 
 		if (t > 0.07) {
-			envelope = 1-(t-0.1)/(1-0.1);
+			envelope = 1-(t-0.07)/(1-0.07);
 			envelope *= envelope;
 			envelope *= 0.5;
 		}
@@ -236,14 +260,14 @@ static Tut_Timeline make_drum_timeline() {
 				break;
 		}
 		switch(_c) {
-			case 'K': tut_play(60, 1.5*SPI); break;
-			case 's': tut_play(200, 2*SPI); break;
-			case 'h': tut_play(700, 5*SPI); break;
+			case 'K': tut_play(70, 0.2); break;
+			case 's': tut_play(200, 0.15); break;
+			case 'h': tut_play(700, 0.4); break;
 		}
 		// if ((_i & 1) == 0) {
 		// 	tut_velocity((_i&1) ? 0.1 : 0.2);
 		// 	tut_instrument(instrument_hihat);
-		// 	tut_play(1000, 1*SPI);
+		// 	tut_play(1000, 0.1);
 		// }
 	}
 
@@ -258,32 +282,27 @@ int main(void) {
 	Tut_Timeline bass_piano_timeline = make_bass_timeline();
 	Tut_Timeline drum_timeline = make_drum_timeline();
 
+
 	tut_timeline(&main_timeline);
-	tut_to(0.2);
-	tut_instrument(instrument_drum);
+	tut_to(0);
+	tut_instrument(instrument_cello_ish);
 
-	tut_play_advance(200, 10);
+	tut_velocity(0.5);
+	tut_play(f2, 16*SPI);
+	tut_play_advance(f3, 16*SPI);
 
-	// tut_timeline(&main_timeline);
-	// tut_to(0);
-	// tut_instrument(instrument_cello_ish);
+	tut_play_timeline(&arpeggio_piano_timeline);
+	tut_play_timeline(&bass_piano_timeline);
+	tut_advance(64*SPI);
 
-	// tut_velocity(0.5);
-	// tut_play(f2, 16*SPI);
-	// tut_play_advance(f3, 16*SPI);
-
-	// tut_play_timeline(&arpeggio_piano_timeline);
-	// tut_play_timeline(&bass_piano_timeline);
-	// tut_advance(64*SPI);
-
-	// for (int i = 0; i < 3; ++i) {
-	// 	tut_velocity(1);
-	// 	tut_play_timeline(&drum_timeline);
-	// 	tut_velocity(0.5);
-	// 	tut_play_timeline(&arpeggio_piano_timeline);
-	// 	tut_play_timeline(&bass_piano_timeline);
-	// 	tut_advance(64*SPI);
-	// }
+	for (int i = 0; i < 3; ++i) {
+		tut_velocity(1);
+		tut_play_timeline(&drum_timeline);
+		tut_velocity(0.5);
+		tut_play_timeline(&arpeggio_piano_timeline);
+		tut_play_timeline(&bass_piano_timeline);
+		tut_advance(64*SPI);
+	}
 
 	tut_gen_samples(&main_timeline);
 
