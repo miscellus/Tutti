@@ -71,7 +71,7 @@ static TUT_INSTRUMENT(instrument_drum) {
 		0.1, 0,
 	};
 
-	double pos = 0;
+	double pos = at;
 
 	for (int i = 0; i < num_samples; ++i) {
 		float t = ((float)i/(float)num_samples);
@@ -243,32 +243,31 @@ static Tut_Timeline make_drum_timeline() {
 	tut_timeline(&tl);
 	tut_to(0);
 
-	TUT_SEQUENCE(
-	"K---h---s--K----K---h---s-------"
-	"K---h---s--K----K---h---s-------"
-	,SPI) {
+	TUT_SEQUENCE(drum_seq, char,
+		"K---h---s--K----K---h---s-------"
+		"K---h---s--K----K---h---s-------"
+	) {
 		tut_velocity(1);
-		switch(_c) {
+		switch(drum_seq.symbol) {
 			case 'K':
 				tut_instrument(instrument_drum);
+				tut_play(70, 0.2);
 				break;
 			case 's':
 				tut_instrument(instrument_snare_drum);
+				tut_play(200, 0.15);
 				break;
 			case 'h':
 				tut_instrument(instrument_hihat);
+				tut_play(700, 0.4);
 				break;
 		}
-		switch(_c) {
-			case 'K': tut_play(70, 0.2); break;
-			case 's': tut_play(200, 0.15); break;
-			case 'h': tut_play(700, 0.4); break;
-		}
-		// if ((_i & 1) == 0) {
+		// if ((drum_seq.index & 1) == 0) {
 		// 	tut_velocity((_i&1) ? 0.1 : 0.2);
 		// 	tut_instrument(instrument_hihat);
 		// 	tut_play(1000, 0.1);
 		// }
+		tut_advance(SPI);
 	}
 
 	tut_gen_samples(&tl);
@@ -287,20 +286,35 @@ int main(void) {
 	tut_to(0);
 	tut_instrument(instrument_cello_ish);
 
-	tut_velocity(0.5);
-	tut_play(f2, 16*SPI);
-	tut_play_advance(f3, 16*SPI);
+	TUT_SEQUENCE(main_seq, int, (int[]){
+		1,
+		2, 2,
+		3, 3, 3, 3,
+		0,
+	}) {
+		switch(main_seq.symbol) {
+			case 1: {
+				tut_velocity(0.5);
+				tut_play(f2, 16*SPI);
+				tut_play_advance(f3, 16*SPI);
+				continue;
+			}
+			break;
+			
+			case 2: {
+				tut_play_timeline(&arpeggio_piano_timeline);
+				tut_play_timeline(&bass_piano_timeline);
+			}
+			break;
 
-	tut_play_timeline(&arpeggio_piano_timeline);
-	tut_play_timeline(&bass_piano_timeline);
-	tut_advance(64*SPI);
+			case 3: {
+				tut_play_timeline(&arpeggio_piano_timeline);
+				tut_play_timeline(&bass_piano_timeline);
+				tut_play_timeline(&drum_timeline);
+			}
+			break;
+		}
 
-	for (int i = 0; i < 3; ++i) {
-		tut_velocity(1);
-		tut_play_timeline(&drum_timeline);
-		tut_velocity(0.5);
-		tut_play_timeline(&arpeggio_piano_timeline);
-		tut_play_timeline(&bass_piano_timeline);
 		tut_advance(64*SPI);
 	}
 

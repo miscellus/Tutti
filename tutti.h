@@ -254,7 +254,7 @@ Note Frequency in hertz (Wavelength in centimeters)
 #define TUT_OFFSET_OF(s,memb) \
 	((size_t)((char *)&((s *)0)->memb - (char *)0))
 
-#define TUT_SEQUENCE(S, I) for (int _i=0, _c; (_c=(S)[_i]); ++_i, tut_advance(I))
+#define TUT_SEQUENCE(SEQUENCE, SYMBOL_TYPE, ...) for (struct {int index; SYMBOL_TYPE symbol;} SEQUENCE = {0}; ((SEQUENCE).symbol=(__VA_ARGS__)[((SEQUENCE).index)]); ++(SEQUENCE).index)
 
 #define TUT_INSTRUMENT(name) \
 	float name(float *samples, int num_samples, float frequency, float duration, float at, float velocity) 
