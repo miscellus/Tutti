@@ -314,7 +314,7 @@ int main(void) {
 		tut_advance(2*INTERVALS_PER_BAR);
 	}
 
-	FILE *file = fopen("output.wav", "wb");
+	FILE *file = fopen("Still_D.R.E.wav", "wb");
 	tut_save_timeline_as_wave_file(&main_timeline, file);
 	fclose(file);
 
