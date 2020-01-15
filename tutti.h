@@ -297,16 +297,16 @@ double tut_wave_square(double v) {
 	v -= (double)(int64_t)v;
 
 	// if (v < 0.45) {
-	// 	v = 1;
+	//  v = 1;
 	// }
 	// else if (v < 0.5) {
-	// 	v = 1 - (v-0.45)/0.05;
+	//  v = 1 - (v-0.45)/0.05;
 	// }
 	// else if (v < 0.55) {
-	// 	v = (v-0.5)/0.05;
+	//  v = (v-0.5)/0.05;
 	// }
 	// else {
-	// 	v = 0;
+	//  v = 0;
 	// }
 
 	// v = v*2 - 1;
@@ -332,34 +332,34 @@ double tut_wave_saw(double v) {
 
 static float tut_envelope(float t, float *envelope, int num_points) {
 
-    
-    // Example:
-    //
-    // float envelope[] = {
-    //     0,    0,
-    //     0.01, 1,
-    //     1,    0,
-    // };
+	
+	// Example:
+	//
+	// float envelope[] = {
+	//     0,    0,
+	//     0.01, 1,
+	//     1,    0,
+	// };
 
-    // amplitude = tut_envelope(t, envelope, 3);
-    
-    
-    float min_t = envelope[0];
-    float min_v = envelope[1];
-    float max_t;
-    float max_v;
+	// amplitude = tut_envelope(t, envelope, 3);
+	
+	
+	float min_t = envelope[0];
+	float min_v = envelope[1];
+	float max_t;
+	float max_v;
 
-    for (int i = 2; i < num_points; i += 2) {
-        max_t = envelope[i];
-        max_v = envelope[i+1];
-        if (t < max_t) {
-            return min_v + ((t-min_t)/(max_t-min_t))*(max_v-min_v);
-        }
-        min_t = max_t;
-        min_v = max_v;
-    }
+	for (int i = 2; i < num_points; i += 2) {
+		max_t = envelope[i];
+		max_v = envelope[i+1];
+		if (t < max_t) {
+			return min_v + ((t-min_t)/(max_t-min_t))*(max_v-min_v);
+		}
+		min_t = max_t;
+		min_v = max_v;
+	}
 
-    return max_v;
+	return max_v;
 }
 
 typedef enum Tut_Opcode {
@@ -413,7 +413,7 @@ typedef struct Tut_Time_Op {
 } Tut_Time_Op;
 
 typedef struct Tut_Timeline {
-    double duration;
+	double duration;
 
 	size_t ops_capacity;
 	uint64_t end_op_index;
@@ -444,7 +444,7 @@ static TUT_INSTRUMENT(tut_default_instrument) {
 		samples[i] = signal;
 	}
 
-    return 0;
+	return 0;
 }
 
 typedef struct Tut_Global_State {
@@ -465,19 +465,19 @@ static inline double tut_at(void) {
 }
 
 static inline double tut_to(double at) {
-    at *= tut_state.time_scale;
+	at *= tut_state.time_scale;
 	return (tut_state.at = at);
 }
 
 static inline double tut_advance(double duration) {
-    duration *= tut_state.time_scale;
-    return (tut_state.at += duration);
+	duration *= tut_state.time_scale;
+	return (tut_state.at += duration);
 }
 
 static inline double tut_time_scale(double time_scale) {
 	double old = tut_state.time_scale;
-    tut_state.time_scale = time_scale;
-    return old;
+	tut_state.time_scale = time_scale;
+	return old;
 }
 
 static inline void tut_timeline(Tut_Timeline *timeline) {
@@ -508,11 +508,11 @@ static void tut_push_op(Tut_Op op) {
 }
 
 static inline void tut_play(float frequency, float duration) {
-    duration *= tut_state.time_scale;
+	duration *= tut_state.time_scale;
 
-    if (tut_state.timeline->duration < tut_state.at + duration) {
-        tut_state.timeline->duration = tut_state.at + duration;
-    }
+	if (tut_state.timeline->duration < tut_state.at + duration) {
+		tut_state.timeline->duration = tut_state.at + duration;
+	}
 
 	tut_push_op((Tut_Op){
 		.play={
@@ -551,9 +551,9 @@ static inline void tut_instrument(Tut_Instrument *instrument) {
 
 static inline void tut_play_timeline(Tut_Timeline *timeline) {
 
-    if (tut_state.timeline->duration < tut_state.at + timeline->duration) {
-        tut_state.timeline->duration = tut_state.at + timeline->duration;
-    }
+	if (tut_state.timeline->duration < tut_state.at + timeline->duration) {
+		tut_state.timeline->duration = tut_state.at + timeline->duration;
+	}
 
 	tut_push_op((Tut_Op){
 		.sub_timeline={
@@ -568,7 +568,7 @@ static inline float tut_play_timeline_advance(Tut_Timeline *timeline) {
 
 	tut_play_timeline(timeline);
 
-    // float duration = (float)timeline->end_sample_index / (float)tut_state.sample_rate;
+	// float duration = (float)timeline->end_sample_index / (float)tut_state.sample_rate;
 
 	return tut_advance(timeline->duration);
 }
@@ -720,7 +720,7 @@ static void tut_save_timeline_as_wave_file(Tut_Timeline *tl, FILE *file_handle) 
 		// uint8_t bytes[]; // Remainder of wave file is bytes
 	} Wav_Header;
 
-    tut_gen_samples(tl);
+	tut_gen_samples(tl);
 
 	size_t num_samples = tl->end_sample_index;
 	uint32_t sample_rate = tut_state.sample_rate;
