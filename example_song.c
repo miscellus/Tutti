@@ -191,9 +191,9 @@ static Tut_Timeline make_arpeggio_piano_timeline(void) {
 		tut_to(4*seq.index);
 		
 		switch (seq.symbol) {
-			case 'a': play_triade(C5, f5, A5); break;
-			case 'b': play_triade(c5, f5, A5); break;
-			case 'c': play_triade(c5, f5, G5); break;
+			case 'a': play_triade(TUT_C5, TUT_f5, TUT_A5); break;
+			case 'b': play_triade(TUT_c5, TUT_f5, TUT_A5); break;
+			case 'c': play_triade(TUT_c5, TUT_f5, TUT_G5); break;
 		}
 	}
 
@@ -206,20 +206,20 @@ static Tut_Timeline make_bass_timeline(void) {
 
 	tut_to(0);
 	tut_instrument(instrument_cello_ish);
-	tut_play(A2, 8);
-	tut_play(A3, 8);
+	tut_play(TUT_A2, 8);
+	tut_play(TUT_A3, 8);
 
 	tut_to(24);
-	tut_play(c3, 8);
-	tut_play(c4, 8);
+	tut_play(TUT_c3, 8);
+	tut_play(TUT_c4, 8);
 	
 	tut_to(32);
-	tut_play(f2, 16);
-	tut_play(f3, 16);
+	tut_play(TUT_f2, 16);
+	tut_play(TUT_f3, 16);
 	
 	tut_to(56);
-	tut_play(f2, 8);
-	tut_play(f3, 8);
+	tut_play(TUT_f2, 8);
+	tut_play(TUT_f3, 8);
 
 	return tl;
 }
@@ -287,8 +287,8 @@ int main(void) {
 			
 			case 1: {
 				tut_volume(0.5);
-				tut_play(f2, 16);
-				tut_play(f3, 16);
+				tut_play(TUT_f2, 16);
+				tut_play(TUT_f3, 16);
 				tut_advance(16);
 				continue;
 			}
