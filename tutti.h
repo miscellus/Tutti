@@ -411,6 +411,8 @@ typedef struct Tut_Time_Op {
 } Tut_Time_Op;
 
 typedef struct Tut_Timeline {
+    double duration;
+
 	size_t ops_capacity;
 	uint64_t end_op_index;
 	Tut_Time_Op *ops;
@@ -506,6 +508,10 @@ static void tut_push_op(Tut_Op op) {
 static inline void tut_play(float frequency, float duration) {
     duration *= tut_state.time_scale;
 
+    if (tut_state.timeline->duration < tut_state.at + duration) {
+        tut_state.timeline->duration = tut_state.at + duration;
+    }
+
 	tut_push_op((Tut_Op){
 		.play={
 			.common={TUT_OP_PLAY, tut_state.sequence_number++},
@@ -542,6 +548,11 @@ static inline void tut_instrument(Tut_Instrument *instrument) {
 }
 
 static inline void tut_play_timeline(Tut_Timeline *timeline) {
+
+    if (tut_state.timeline->duration < tut_state.at + timeline->duration) {
+        tut_state.timeline->duration = tut_state.at + timeline->duration;
+    }
+
 	tut_push_op((Tut_Op){
 		.sub_timeline={
 			.common={TUT_OP_SUB_TIMELINE, tut_state.sequence_number++},
@@ -555,9 +566,9 @@ static inline float tut_play_timeline_advance(Tut_Timeline *timeline) {
 
 	tut_play_timeline(timeline);
 
-	float duration = (float)timeline->end_sample_index / (float)tut_state.sample_rate;
+    // float duration = (float)timeline->end_sample_index / (float)tut_state.sample_rate;
 
-	return tut_advance(duration);
+	return tut_advance(timeline->duration);
 }
 
 static inline void tut_add_samples(Tut_Timeline *tl, double at, float *samples, size_t num_samples, float factor) {
@@ -706,6 +717,8 @@ static void tut_save_timeline_as_wave_file(Tut_Timeline *tl, FILE *file_handle) 
 		uint32_t data_bytes; // Number of bytes in data. Number of samples * num_channels * sample byte size
 		// uint8_t bytes[]; // Remainder of wave file is bytes
 	} Wav_Header;
+
+    tut_gen_samples(tl);
 
 	size_t num_samples = tl->end_sample_index;
 	uint32_t sample_rate = tut_state.sample_rate;
