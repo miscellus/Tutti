@@ -507,7 +507,7 @@ static void tut_push_op(Tut_Op op) {
 	tl->ops[tl->end_op_index++] = (Tut_Time_Op){tut_state.at, op};
 }
 
-static inline void tut_play(float frequency, float duration) {
+static inline double tut_play(float frequency, float duration) {
 	duration *= tut_state.time_scale;
 
 	if (tut_state.timeline->duration < tut_state.at + duration) {
@@ -521,6 +521,8 @@ static inline void tut_play(float frequency, float duration) {
 			.duration=(float)duration,
 		}
 	});
+
+    return tut_state.at;
 }
 
 static inline float tut_play_advance(float frequency, double duration) {
@@ -690,8 +692,6 @@ static void tut_gen_samples(Tut_Timeline *timeline) {
 			}
 		}
 	}
-
-	tut_normalize_samples(timeline, 0.8);
 }
 
 static void tut_save_timeline_as_wave_file(Tut_Timeline *tl, FILE *file_handle) {

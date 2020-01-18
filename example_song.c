@@ -117,13 +117,13 @@ static inline TUT_INSTRUMENT(instrument_snare_drum) {
 	// time    amplitude
 		0,       0,
 		0.01,    1,
-		0.1,     0,
+		0.3,     0,
 	};
 
 	static float noise_envelope[] = {
-		0,     0.0,
-		0.001, 1,
-		0.1,   0.1,
+		0,     1.0,
+		0.7,   0.4,
+		// 0.4,     0,
 		1,     0,
 	};
 
@@ -170,9 +170,9 @@ static TUT_INSTRUMENT(instrument_hihat) {
 
 static inline void play_triade(float frequency1, float frequency2, float frequency3) {
 		tut_play(frequency1, 2);
-		tut_advance(0.25);
+		tut_advance(0.2);
 		tut_play(frequency2, 2);
-		tut_advance(0.25);
+		tut_advance(0.2);
 		tut_play(frequency3, 2);
 }
 
@@ -225,15 +225,22 @@ static Tut_Timeline make_bass_timeline(void) {
 }
 
 
-static Tut_Timeline make_drum_timeline(void) {
+static Tut_Timeline make_drum_timeline(int variant) {
 	Tut_Timeline tl = tut_make_timeline();
 	tut_timeline(&tl);
 	tut_to(0);
 
-	TUT_SEQUENCE(drum_seq, char,
-		"K---h---s--K----K---h---s-------"
-		"K---h---s--K----K---h---s-------"
+	TUT_SEQUENCE(drum_seq, char, (const char *[]){
+			[0]=
+			"--------------------------------"
+			"--------------------h---s-------"
+			,
+			[1]=
+			"K---h---s--K----K---h---s-------"
+			"K---h---s--K----K---h---s-------"
+		}[variant]
 	) {
+		tut_to(drum_seq.index);
 		tut_volume(1);
 		switch(drum_seq.symbol) {
 			case 'K':
@@ -242,7 +249,7 @@ static Tut_Timeline make_drum_timeline(void) {
 				tut_play(70, 2);
 				break;
 			case 's':
-				tut_volume(0.5);
+				tut_volume(1);
 				tut_instrument(instrument_snare_drum);
 				tut_play(200, 2);
 				break;
@@ -252,12 +259,77 @@ static Tut_Timeline make_drum_timeline(void) {
 				tut_play(700, 6);
 				break;
 		}
-		if ((drum_seq.index & 1) == 0) {
-			tut_volume((drum_seq.index & 1) ? 0.09 : 0.08);
-			tut_instrument(instrument_hihat);
-			tut_play(1000, 0.5);
+		// if ((drum_seq.index & 1) == 0) {
+		// 	tut_volume((drum_seq.index & 1) ? 0.09 : 0.08);
+		// 	tut_instrument(instrument_hihat);
+		// 	tut_play(1000, 0.5);
+		// }
+	}
+
+	return tl;
+}
+
+static Tut_Timeline make_synth_high_timeline(int variant) {
+	Tut_Timeline tl = tut_make_timeline();
+	tut_timeline(&tl);
+	tut_to(0);
+	tut_instrument(0);
+
+	float f1 = TUT_C6;
+
+	switch(variant) {
+		case 0: {
+			tut_to(54);
+
+			tut_volume(1);
+			tut_play(f1, 1);
+			tut_advance(2);
+
+			tut_play(f1 * TUT_s1, 1);
+			tut_advance(2);
+
+			tut_play(f1, 1);
+			tut_advance(2);
+
+			tut_volume(0.75);
+			tut_play(f1 * TUT_S2, 1);
+			tut_advance(2);
+
+			tut_volume(0.5);
+			tut_play(f1 * TUT_S4, 1);
+			tut_advance(2);
+
+			tut_volume(0.375);
+			tut_play(f1 * TUT_S0, 1);
+			tut_advance(2);
 		}
-		tut_advance(1);
+		break;
+
+		case 1: {
+			tut_to(22);
+
+			tut_volume(1);
+			tut_play(f1, 1);
+			tut_advance(2);
+
+			tut_play(f1 * TUT_s1, 1);
+			tut_advance(2);
+			
+			tut_play(f1, 1);
+			tut_advance(2);
+			
+			tut_volume(0.75);
+			tut_play(f1 * TUT_S2, 1);
+			tut_advance(2);
+			
+			tut_volume(0.5);
+			tut_play(f1 * TUT_S4, 1);
+			tut_advance(2);
+			
+			tut_volume(0.375);
+			tut_play(f1 * TUT_s1, 1);
+		}
+		break;
 	}
 
 	return tl;
@@ -269,50 +341,65 @@ int main(void) {
 
 	Tut_Timeline main_timeline = tut_make_timeline();
 	Tut_Timeline arpeggio_piano_timeline = make_arpeggio_piano_timeline();
+	Tut_Timeline synth_high_timeline[] = {
+		make_synth_high_timeline(0),
+		make_synth_high_timeline(1)};
 	Tut_Timeline bass_piano_timeline = make_bass_timeline();
-	Tut_Timeline drum_timeline = make_drum_timeline();
+	Tut_Timeline drum_timeline[] = {
+		make_drum_timeline(0),
+		make_drum_timeline(1)};
 
 
 	tut_timeline(&main_timeline);
+	
 	tut_to(0);
 	tut_instrument(instrument_cello_ish);
 
+	tut_volume(0.5);
+	tut_play(TUT_f2, 16);
+	tut_play(TUT_f3, 16);
+
 	TUT_SEQUENCE(main_seq, int, (int[]){
-		1,
-		2, 2,
-		3, 3, 3, 3,
+		2, 3,
+		4, 5, 5, 6,
 		0,
 	}) {
-		switch(main_seq.symbol) {
-			
-			case 1: {
-				tut_volume(0.5);
-				tut_play(TUT_f2, 16);
-				tut_play(TUT_f3, 16);
-				tut_advance(16);
-				continue;
-			}
-			break;
+		tut_to(16 + main_seq.index*2*INTERVALS_PER_BAR);
 
-			case 2: {
-				tut_volume(0.5);
-				tut_play_timeline(&arpeggio_piano_timeline);
-				tut_play_timeline(&bass_piano_timeline);
-			}
-			break;
+		int s = main_seq.symbol;
 
-			case 3: {
-				tut_volume(0.5);
-				tut_play_timeline(&arpeggio_piano_timeline);
-				tut_play_timeline(&bass_piano_timeline);
-				tut_volume(1);
-				tut_play_timeline(&drum_timeline);
-			}
-			break;
+		if (s > 1) {
+			tut_volume(0.125);
+			tut_play_timeline(&arpeggio_piano_timeline);
+			tut_volume(0.5);
+			tut_play_timeline(&bass_piano_timeline);
 		}
 
-		tut_advance(2*INTERVALS_PER_BAR);
+		if (s == 3) {
+			tut_volume(1);
+			tut_play_timeline(&drum_timeline[0]);
+		}
+		else if (s >= 4) {
+			tut_volume(1);
+			tut_play_timeline(&drum_timeline[1]);
+			tut_volume(0.6);
+		}
+
+		if (s == 4) {
+			tut_play_timeline(&synth_high_timeline[0]);
+		}
+		else if (s == 5) {
+			tut_play_timeline(&synth_high_timeline[0]);
+			tut_play_timeline(&synth_high_timeline[1]);
+		}
+		else if (s == 6) {
+			tut_play_timeline(&synth_high_timeline[1]);
+		}
+
 	}
+
+	tut_gen_samples(&main_timeline);
+	tut_normalize_samples(&main_timeline, 0.8);
 
 	FILE *file = fopen("Still_D.R.E.wav", "wb");
 	tut_save_timeline_as_wave_file(&main_timeline, file);
